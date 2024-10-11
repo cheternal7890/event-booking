@@ -1,6 +1,11 @@
 package models
 
-import "example.com/rest-api/db"
+import (
+	"errors"
+
+	"example.com/rest-api/db"
+	"example.com/rest-api/utils"
+)
 
 type User struct {
 	ID       int64
@@ -22,7 +27,13 @@ func (u User) Save() error {
 
 	defer stmt.Close()
 
-	result, err := stmt.Exec(u.Email, u.Password)
+	hashedPassword, err := utils.HashPassword(u.Password)
+
+	if err != nil {
+		return err
+	}
+
+	result, err := stmt.Exec(u.Email, hashedPassword)
 
 	if err != nil {
 		return err
@@ -31,4 +42,25 @@ func (u User) Save() error {
 	userId, err := result.LastInsertId()
 	u.ID = userId
 	return err
+}
+
+func (u User) ValidateUser() error {
+	query := "SELECT password FROM users WHERE email = ?"
+
+	row := db.DB.QueryRow(query, u.Email)
+
+	var hashedPassword string
+	err := row.Scan(&hashedPassword)
+
+	if err != nil {
+		return errors.New("either email or password is invalid")
+	}
+
+	passwordIsValid := utils.ComparePasswordWithHash(u.Password, hashedPassword)
+
+	if !passwordIsValid {
+		return errors.New("either email or password is invalid")
+	}
+
+	return nil
 }
